@@ -1,40 +1,28 @@
 use tokio::net::{TcpListener, TcpStream};
-use mini_redis::{Connection, Frame};
+use tokio::io::Result;
+use tokio::io::AsyncReadExt;
 
 #[tokio::main]
-async fn main(){
-
-    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
-
+async fn main() -> Result<()>{
+    // create a listener 
+    let listener = TcpListener::bind("127.0.0.1:6889").await?;
+    // create the listener
     loop {
-        let (socket, _) = listener.accept().await.unwrap();
-        tokio::spawn(async move {
-            process(socket).await;
-        });
+        let (socket, _) = listener.accept().await?;
+        // waits for the message
+        let _ = process(socket).await;
     }
-
 }
 
-async fn process(socket: TcpStream) {
-    use mini_redis::Command::{self, Get, Set};
-    use std::collections::HashMap;
-    let mut db = HashMap::new();
-    let mut connection = Connection::new(socket);
-    while let Some(frame) = connection.read_frame().await.unwrap(){
-        let response = match Command::from_frame(frame).unwrap() {
-            Set(cmd) => {
-                db.insert(cmd.key().to_string(), cmd.value().to_vec());
-                Frame::Simple("OK".to_string())
-            }
-            Get(cmd) => {
-                if let Some(value) = db.get(cmd.key()){
-                    Frame::Bulk(value.clone().into())
-                } else {
-                    Frame::Null
-                }
-            }
-            cmd => panic!("What {:?}", cmd)
-        };
-        connection.write_frame(&response).await.unwrap();
+async fn process(mut socket: TcpStream) -> Result<()>{
+    let mut buf = vec![0; 1024]; 
+    // creates the message
+    loop {
+        let n = socket.read(&mut buf).await?;
+        if n == 0 {
+            return Ok(())
+        }
+        let msg = String::from_utf8_lossy(&buf[..n]);
+        println!("{msg}");
     }
 }
